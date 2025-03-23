@@ -61,3 +61,111 @@ export const getPlates = async () => {
     return { success: false, message: 'Error retrieving plates' };
   }
 };
+
+/**
+ * Process an incoming plate from an external system (like a camera)
+ * This is the external API endpoint handler
+ */
+export const processExternalPlateRequest = async (request: Request): Promise<Response> => {
+  // Only allow POST requests
+  if (request.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        message: 'Method not allowed. Use POST.' 
+      }),
+      { 
+        status: 405,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+  
+  try {
+    // Parse the JSON body
+    const data = await request.json();
+    
+    // Validate the request payload
+    if (!data.plateNumber) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: 'Missing plateNumber in request body' 
+        }),
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    const plateNumber = data.plateNumber;
+    
+    // Get the plates from localStorage
+    const storedPlates = localStorage.getItem('plates');
+    let plates = [];
+    
+    if (storedPlates) {
+      try {
+        plates = JSON.parse(storedPlates);
+      } catch (error) {
+        console.error('Error parsing plates from localStorage', error);
+      }
+    }
+    
+    // Check if the plate exists in our system
+    const foundPlate = plates.find((p: any) => p.plateNumber === plateNumber);
+    
+    if (foundPlate) {
+      // Update the timestamp
+      foundPlate.timestamp = new Date().toISOString();
+      
+      // Update localStorage
+      localStorage.setItem('plates', JSON.stringify(plates));
+      
+      // Publish event to the app to update the UI
+      const event = new CustomEvent('plateDetected', { detail: plateNumber });
+      window.dispatchEvent(event);
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: `Plate ${plateNumber} recognized`, 
+          data: {
+            plateNumber: foundPlate.plateNumber,
+            childName: foundPlate.childName,
+            timestamp: foundPlate.timestamp
+          }
+        }),
+        { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    } else {
+      // Plate not found
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: `Plate ${plateNumber} not found in system` 
+        }),
+        { 
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+  } catch (error) {
+    console.error('Error processing plate request:', error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        message: 'Error processing request' 
+      }),
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+};
