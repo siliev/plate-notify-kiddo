@@ -67,8 +67,11 @@ export const getPlates = async () => {
  * This is the external API endpoint handler
  */
 export const processExternalPlateRequest = async (request: Request): Promise<Response> => {
+  console.log('Processing external plate request:', request.url, request.method);
+  
   // Only allow POST requests
   if (request.method !== 'POST') {
+    console.log('Method not allowed:', request.method);
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -87,9 +90,11 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
   try {
     // Parse the JSON body
     const data = await request.json();
+    console.log('Request body:', data);
     
     // Validate the request payload
     if (!data.plateNumber) {
+      console.log('Missing plateNumber in request body');
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -106,6 +111,7 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
     }
     
     const plateNumber = data.plateNumber;
+    console.log('Processing plate number:', plateNumber);
     
     // Get the plates from localStorage
     const storedPlates = localStorage.getItem('plates');
@@ -114,15 +120,20 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
     if (storedPlates) {
       try {
         plates = JSON.parse(storedPlates);
+        console.log('Retrieved plates from localStorage, count:', plates.length);
       } catch (error) {
         console.error('Error parsing plates from localStorage', error);
       }
+    } else {
+      console.log('No plates found in localStorage');
     }
     
     // Check if the plate exists in our system
     const foundPlate = plates.find((p: any) => p.plateNumber === plateNumber);
     
     if (foundPlate) {
+      console.log('Plate found:', foundPlate);
+      
       // Update the timestamp
       foundPlate.timestamp = new Date().toISOString();
       
@@ -132,6 +143,7 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
       // Publish event to the app to update the UI
       const event = new CustomEvent('plateDetected', { detail: plateNumber });
       window.dispatchEvent(event);
+      console.log('Dispatched plateDetected event');
       
       return new Response(
         JSON.stringify({ 
@@ -152,6 +164,8 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
         }
       );
     } else {
+      console.log('Plate not found:', plateNumber);
+      
       // Plate not found
       return new Response(
         JSON.stringify({ 
@@ -172,7 +186,8 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
     return new Response(
       JSON.stringify({ 
         success: false, 
-        message: 'Error processing request' 
+        message: 'Error processing request',
+        error: error.toString()
       }),
       { 
         status: 500,

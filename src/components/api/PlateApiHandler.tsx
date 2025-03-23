@@ -5,7 +5,6 @@ import { processExternalPlateRequest } from '@/lib/api';
 
 /**
  * Component that handles API routes within the application
- * This component registers a service worker to handle API requests
  */
 const PlateApiHandler: React.FC = () => {
   const { processIncomingPlate } = usePlateContext();
@@ -14,6 +13,7 @@ const PlateApiHandler: React.FC = () => {
     // Set up event listener to handle plate detection events
     const handlePlateDetected = (event: CustomEvent<string>) => {
       const plateNumber = event.detail;
+      console.log('Plate detected event received:', plateNumber);
       processIncomingPlate(plateNumber);
     };
     
@@ -28,188 +28,222 @@ const PlateApiHandler: React.FC = () => {
   
   // Register our API handler
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      // Unregister any existing service workers to ensure clean slate
-      navigator.serviceWorker.getRegistrations().then(registrations => {
+    if (!('serviceWorker' in navigator)) {
+      console.error('Service Worker is not supported in this browser');
+      return;
+    }
+
+    const setupServiceWorker = async () => {
+      try {
+        // First, unregister any existing service workers
+        console.log('Unregistering existing service workers...');
+        const registrations = await navigator.serviceWorker.getRegistrations();
         for (let registration of registrations) {
-          registration.unregister();
+          await registration.unregister();
+          console.log('Service worker unregistered');
         }
-      }).then(() => {
-        // Create a blob with our service worker code
+
+        // Create service worker file content
         const swCode = `
+          // Service Worker for handling plate API requests
+          console.log('Service Worker started');
+
+          self.addEventListener('install', (event) => {
+            console.log('Service Worker installing...');
+            self.skipWaiting(); // Skip waiting to activate immediately
+          });
+
+          self.addEventListener('activate', (event) => {
+            console.log('Service Worker activating...');
+            event.waitUntil(self.clients.claim()); // Take control of all clients
+          });
+
           self.addEventListener('fetch', (event) => {
             const url = new URL(event.request.url);
+            console.log('Service Worker intercepted request:', url.pathname);
             
             // Check if this is a request to our API endpoint
             if (url.pathname === '/api/plate') {
-              event.respondWith(
-                (async () => {
-                  // Post the request to the client for processing
-                  const client = await self.clients.matchAll({type: 'window'});
-                  
-                  if (client.length > 0) {
-                    // Forward the request to be handled by our app
-                    const data = await event.request.clone().json();
-                    client[0].postMessage({
-                      type: 'PLATE_REQUEST',
-                      plateNumber: data.plateNumber
-                    });
+              console.log('API endpoint request detected');
+              
+              event.respondWith((async () => {
+                try {
+                  if (event.request.method === 'POST') {
+                    console.log('Processing POST request to /api/plate');
                     
-                    // Process the request
-                    try {
-                      const clonedRequest = event.request.clone();
-                      
-                      // Only allow POST requests
-                      if (clonedRequest.method !== 'POST') {
-                        return new Response(
-                          JSON.stringify({ 
-                            success: false, 
-                            message: 'Method not allowed. Use POST.' 
-                          }),
-                          { 
-                            status: 405,
-                            headers: { 'Content-Type': 'application/json' }
-                          }
-                        );
-                      }
-                      
-                      // Parse the JSON body
-                      const data = await clonedRequest.json();
-                      
-                      // Validate the request payload
-                      if (!data.plateNumber) {
-                        return new Response(
-                          JSON.stringify({ 
-                            success: false, 
-                            message: 'Missing plateNumber in request body' 
-                          }),
-                          { 
-                            status: 400,
-                            headers: { 'Content-Type': 'application/json' }
-                          }
-                        );
-                      }
-                      
-                      const plateNumber = data.plateNumber;
-                      
-                      // Get the plates from localStorage by asking the client
-                      const storedPlates = localStorage.getItem('plates');
-                      let plates = [];
-                      
-                      if (storedPlates) {
-                        try {
-                          plates = JSON.parse(storedPlates);
-                        } catch (error) {
-                          console.error('Error parsing plates from localStorage', error);
-                        }
-                      }
-                      
-                      // Check if the plate exists in our system
-                      const foundPlate = plates.find((p) => p.plateNumber === plateNumber);
-                      
-                      if (foundPlate) {
-                        // Update the timestamp
-                        foundPlate.timestamp = new Date().toISOString();
-                        
-                        // Update localStorage
-                        localStorage.setItem('plates', JSON.stringify(plates));
-                        
-                        // Return successful response
-                        return new Response(
-                          JSON.stringify({ 
-                            success: true, 
-                            message: \`Plate \${plateNumber} recognized\`, 
-                            data: {
-                              plateNumber: foundPlate.plateNumber,
-                              childName: foundPlate.childName,
-                              timestamp: foundPlate.timestamp
-                            }
-                          }),
-                          { 
-                            status: 200,
-                            headers: { 
-                              'Content-Type': 'application/json',
-                              'Access-Control-Allow-Origin': '*'
-                            }
-                          }
-                        );
-                      } else {
-                        // Plate not found
-                        return new Response(
-                          JSON.stringify({ 
-                            success: false, 
-                            message: \`Plate \${plateNumber} not found in system\` 
-                          }),
-                          { 
-                            status: 404,
-                            headers: { 
-                              'Content-Type': 'application/json',
-                              'Access-Control-Allow-Origin': '*'
-                            }
-                          }
-                        );
-                      }
-                    } catch (error) {
-                      console.error('Error processing plate request:', error);
+                    // Clone the request body
+                    const requestData = await event.request.clone().json();
+                    console.log('Request data:', requestData);
+                    
+                    // Check for plateNumber in the request
+                    if (!requestData.plateNumber) {
+                      console.error('Missing plateNumber in request');
                       return new Response(
-                        JSON.stringify({ 
-                          success: false, 
-                          message: 'Error processing request',
-                          error: error.toString()
+                        JSON.stringify({
+                          success: false,
+                          message: 'Missing plateNumber in request body'
                         }),
-                        { 
-                          status: 500,
-                          headers: { 
+                        {
+                          status: 400,
+                          headers: {
                             'Content-Type': 'application/json',
                             'Access-Control-Allow-Origin': '*'
                           }
                         }
                       );
                     }
+                    
+                    const plateNumber = requestData.plateNumber;
+                    console.log('Processing plate number:', plateNumber);
+                    
+                    // Get the plates from localStorage
+                    const storedPlates = localStorage.getItem('plates');
+                    let plates = [];
+                    
+                    if (storedPlates) {
+                      try {
+                        plates = JSON.parse(storedPlates);
+                        console.log('Retrieved plates from localStorage, count:', plates.length);
+                      } catch (error) {
+                        console.error('Error parsing plates from localStorage', error);
+                      }
+                    } else {
+                      console.log('No plates found in localStorage');
+                    }
+                    
+                    // Check if the plate exists in our system
+                    const foundPlate = plates.find((p) => p.plateNumber === plateNumber);
+                    
+                    if (foundPlate) {
+                      console.log('Plate found:', foundPlate);
+                      
+                      // Update the timestamp
+                      foundPlate.timestamp = new Date().toISOString();
+                      
+                      // Update localStorage
+                      localStorage.setItem('plates', JSON.stringify(plates));
+                      
+                      // Notify client about the detected plate
+                      self.clients.matchAll().then(clients => {
+                        if (clients && clients.length) {
+                          clients[0].postMessage({
+                            type: 'PLATE_DETECTED',
+                            plateNumber: plateNumber
+                          });
+                          console.log('Sent plate detection message to client');
+                        } else {
+                          console.warn('No active clients found to notify');
+                        }
+                      });
+                      
+                      return new Response(
+                        JSON.stringify({
+                          success: true,
+                          message: \`Plate \${plateNumber} recognized\`,
+                          data: {
+                            plateNumber: foundPlate.plateNumber,
+                            childName: foundPlate.childName,
+                            timestamp: foundPlate.timestamp
+                          }
+                        }),
+                        {
+                          status: 200,
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                          }
+                        }
+                      );
+                    } else {
+                      console.log('Plate not found:', plateNumber);
+                      return new Response(
+                        JSON.stringify({
+                          success: false,
+                          message: \`Plate \${plateNumber} not found in system\`
+                        }),
+                        {
+                          status: 404,
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                          }
+                        }
+                      );
+                    }
+                  } else if (event.request.method === 'OPTIONS') {
+                    // Handle CORS preflight requests
+                    return new Response(null, {
+                      status: 204,
+                      headers: {
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                        'Access-Control-Allow-Headers': 'Content-Type'
+                      }
+                    });
                   } else {
+                    console.warn('Unsupported method for /api/plate:', event.request.method);
                     return new Response(
-                      JSON.stringify({ 
-                        success: false, 
-                        message: 'No active clients found to process the request' 
+                      JSON.stringify({
+                        success: false,
+                        message: 'Method not allowed. Use POST.'
                       }),
-                      { 
-                        status: 503,
-                        headers: { 
+                      {
+                        status: 405,
+                        headers: {
                           'Content-Type': 'application/json',
                           'Access-Control-Allow-Origin': '*'
                         }
                       }
                     );
                   }
-                })()
-              );
-            }
-          });
-          
-          self.addEventListener('message', (event) => {
-            if (event.data && event.data.type === 'PING') {
-              event.ports[0].postMessage('PONG');
+                } catch (error) {
+                  console.error('Error in service worker:', error);
+                  return new Response(
+                    JSON.stringify({
+                      success: false,
+                      message: 'Internal server error',
+                      error: error.toString()
+                    }),
+                    {
+                      status: 500,
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                      }
+                    }
+                  );
+                }
+              })());
             }
           });
         `;
+
+        // Create service worker file
+        console.log('Creating service worker file...');
+        const swBlob = new Blob([swCode], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(swBlob);
         
-        const blob = new Blob([swCode], { type: 'application/javascript' });
-        const swUrl = URL.createObjectURL(blob);
+        // Register service worker
+        console.log('Registering service worker...');
+        const registration = await navigator.serviceWorker.register('/sw.js', { 
+          scope: '/',
+          type: 'module'
+        });
         
-        // Register the service worker
-        navigator.serviceWorker.register(swUrl, { scope: '/' })
-          .then((registration) => {
-            console.log('Service Worker registered with scope:', registration.scope);
-          })
-          .catch((error) => {
-            console.error('Service Worker registration failed:', error);
-          });
-      });
-    }
+        console.log('Service Worker registered successfully:', registration.scope);
+      } catch (error) {
+        console.error('Service Worker registration failed:', error);
+      }
+    };
+    
+    setupServiceWorker();
     
     // Handle messages from the service worker
     const handleMessage = (event: MessageEvent) => {
-      if (event.data && event.data.type === 'PLATE_REQUEST') {
+      console.log('Message received from service worker:', event.data);
+      
+      if (event.data && event.data.type === 'PLATE_DETECTED') {
+        console.log('Processing plate detection from service worker:', event.data.plateNumber);
         processIncomingPlate(event.data.plateNumber);
       }
     };
@@ -225,13 +259,13 @@ const PlateApiHandler: React.FC = () => {
         navigator.serviceWorker.getRegistrations().then(registrations => {
           for (let registration of registrations) {
             registration.unregister();
+            console.log('Service worker unregistered during cleanup');
           }
         });
       }
     };
   }, [processIncomingPlate]);
   
-  // This component doesn't render anything - it just sets up API handling
   return null;
 };
 
