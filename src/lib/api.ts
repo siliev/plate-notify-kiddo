@@ -76,7 +76,10 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
       }),
       { 
         status: 405,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
       }
     );
   }
@@ -94,7 +97,10 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
         }),
         { 
           status: 400,
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
         }
       );
     }
@@ -139,7 +145,10 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
         }),
         { 
           status: 200,
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
         }
       );
     } else {
@@ -151,7 +160,10 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
         }),
         { 
           status: 404,
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
         }
       );
     }
@@ -164,7 +176,10 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
       }),
       { 
         status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
       }
     );
   }
