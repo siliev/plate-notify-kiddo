@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 export interface PlateData {
   plateNumber: string;
   childName: string;
-  timestamp: Date;
+  timestamp: Date | string;
   notes?: string;
 }
 
@@ -23,11 +23,31 @@ export const PlateCard: React.FC<PlateCardProps> = ({
   className 
 }) => {
   // Format the timestamp to a readable time
-  const formattedTime = new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: 'numeric',
-    hour12: true
-  }).format(plate.timestamp);
+  // Safely handle different timestamp formats and invalid dates
+  const getFormattedTime = () => {
+    try {
+      const dateObj = plate.timestamp instanceof Date 
+        ? plate.timestamp 
+        : new Date(plate.timestamp);
+      
+      // Check if date is valid
+      if (isNaN(dateObj.getTime())) {
+        console.warn(`Invalid date for plate ${plate.plateNumber}`);
+        return 'Time unavailable';
+      }
+      
+      return new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true
+      }).format(dateObj);
+    } catch (error) {
+      console.error('Error formatting timestamp:', error);
+      return 'Time unavailable';
+    }
+  };
+
+  const formattedTime = getFormattedTime();
 
   return (
     <motion.div
