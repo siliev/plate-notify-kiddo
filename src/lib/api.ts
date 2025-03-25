@@ -1,9 +1,14 @@
 
-// This file simulates an API service for handling plate number requests
+// This file handles API calls to the .NET backend
 
 /**
- * Simulates sending a plate number to the system
- * In a real application, this would be an API call to a backend service
+ * Base URL for the .NET backend API
+ * This should be configured based on your environment
+ */
+const API_BASE_URL = 'https://your-dotnet-api.com/api'; // Replace with your actual .NET API URL
+
+/**
+ * Sends a plate number to the .NET backend
  */
 export const sendPlateNumber = async (plateNumber: string): Promise<{ 
   success: boolean; 
@@ -14,87 +19,106 @@ export const sendPlateNumber = async (plateNumber: string): Promise<{
     timestamp?: string;
   }
 }> => {
-  // Simulate network latency
-  await new Promise(resolve => setTimeout(resolve, 800));
-  
-  // Validate plate number format (simple validation)
-  if (!plateNumber || plateNumber.length < 3) {
+  try {
+    // Call the .NET backend API
+    const response = await fetch(`${API_BASE_URL}/plates/process`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ plateNumber }),
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        message: data.message || `Error: ${response.status}`,
+      };
+    }
+
+    return {
+      success: true,
+      message: data.message || `Plate number ${plateNumber} successfully processed`,
+      data: {
+        plateNumber,
+        childName: data.childName,
+        timestamp: data.timestamp || new Date().toISOString(),
+      }
+    };
+  } catch (error) {
+    console.error('Error sending plate number to backend:', error);
     return {
       success: false,
-      message: 'Invalid plate number format',
+      message: 'Failed to connect to backend service',
     };
   }
-  
-  // In a real app, this would call your backend API
-  // Here we just return a success response
-  return {
-    success: true,
-    message: `Plate number ${plateNumber} successfully processed`,
-    data: {
-      plateNumber,
-      timestamp: new Date().toISOString(),
-    }
-  };
 };
 
 /**
- * Get all plates (for admin panel)
- * In a real application, this would fetch from a database
+ * Get all plates from the .NET backend
  */
 export const getPlates = async () => {
-  // Simulate network latency
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // This would typically be fetched from the server
-  // We're using localStorage in this demo app
-  const storedPlates = localStorage.getItem('plates');
-  
-  if (!storedPlates) {
-    return { success: true, data: [] };
-  }
-  
   try {
-    const plates = JSON.parse(storedPlates);
-    return { success: true, data: plates };
+    const response = await fetch(`${API_BASE_URL}/plates`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return { 
+        success: false, 
+        message: data.message || `Error: ${response.status}`, 
+        data: [] 
+      };
+    }
+
+    return { success: true, data: data.plates || [] };
   } catch (error) {
-    console.error('Error parsing plates from localStorage', error);
-    return { success: false, message: 'Error retrieving plates' };
+    console.error('Error fetching plates from backend:', error);
+    return { 
+      success: false, 
+      message: 'Failed to connect to backend service', 
+      data: [] 
+    };
   }
 };
 
 /**
- * Process an incoming plate from an external system (like a camera)
- * This is the external API endpoint handler
+ * This function is no longer needed as we're using a real backend now
+ * Keeping the function signature for compatibility but redirecting to the real API
  */
 export const processExternalPlateRequest = async (request: Request): Promise<Response> => {
-  console.log('Processing external plate request:', request.url, request.method);
+  console.log('External plate request intercepted, forwarding to .NET backend');
   
-  // Only allow POST requests
-  if (request.method !== 'POST') {
-    console.log('Method not allowed:', request.method);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: 'Method not allowed. Use POST.' 
-      }),
-      { 
-        status: 405,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      }
-    );
-  }
-  
+  // Forward the request to the .NET backend
   try {
-    // Parse the JSON body
-    const data = await request.json();
-    console.log('Request body:', data);
+    // Only handle POST requests
+    if (request.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: 'Method not allowed. Use POST.' 
+        }),
+        { 
+          status: 405,
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
+        }
+      );
+    }
     
-    // Validate the request payload
+    // Parse the request body
+    const data = await request.json();
+    
     if (!data.plateNumber) {
-      console.log('Missing plateNumber in request body');
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -110,51 +134,19 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
       );
     }
     
-    const plateNumber = data.plateNumber;
-    console.log('Processing plate number:', plateNumber);
+    // Forward to the real backend
+    const result = await sendPlateNumber(data.plateNumber);
     
-    // Get the plates from localStorage
-    const storedPlates = localStorage.getItem('plates');
-    let plates = [];
-    
-    if (storedPlates) {
-      try {
-        plates = JSON.parse(storedPlates);
-        console.log('Retrieved plates from localStorage, count:', plates.length);
-      } catch (error) {
-        console.error('Error parsing plates from localStorage', error);
+    if (result.success) {
+      // If successful, dispatch the plateDetected event so the UI updates
+      if (typeof window !== 'undefined') {
+        const event = new CustomEvent('plateDetected', { detail: data.plateNumber });
+        window.dispatchEvent(event);
+        console.log('Dispatched plateDetected event');
       }
-    } else {
-      console.log('No plates found in localStorage');
-    }
-    
-    // Check if the plate exists in our system
-    const foundPlate = plates.find((p: any) => p.plateNumber === plateNumber);
-    
-    if (foundPlate) {
-      console.log('Plate found:', foundPlate);
-      
-      // Update the timestamp
-      foundPlate.timestamp = new Date().toISOString();
-      
-      // Update localStorage
-      localStorage.setItem('plates', JSON.stringify(plates));
-      
-      // Publish event to the app to update the UI
-      const event = new CustomEvent('plateDetected', { detail: plateNumber });
-      window.dispatchEvent(event);
-      console.log('Dispatched plateDetected event');
       
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: `Plate ${plateNumber} recognized`, 
-          data: {
-            plateNumber: foundPlate.plateNumber,
-            childName: foundPlate.childName,
-            timestamp: foundPlate.timestamp
-          }
-        }),
+        JSON.stringify(result),
         { 
           status: 200,
           headers: { 
@@ -164,14 +156,8 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
         }
       );
     } else {
-      console.log('Plate not found:', plateNumber);
-      
-      // Plate not found
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: `Plate ${plateNumber} not found in system` 
-        }),
+        JSON.stringify(result),
         { 
           status: 404,
           headers: { 
@@ -182,7 +168,7 @@ export const processExternalPlateRequest = async (request: Request): Promise<Res
       );
     }
   } catch (error) {
-    console.error('Error processing plate request:', error);
+    console.error('Error forwarding request to backend:', error);
     return new Response(
       JSON.stringify({ 
         success: false, 

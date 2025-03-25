@@ -1,6 +1,8 @@
 
-// Service Worker for handling plate API requests
-console.log('Service Worker started');
+// Service Worker for handling plate API requests and forwarding to .NET backend
+console.log('Service Worker started - .NET Backend Integration');
+
+const API_BASE_URL = 'https://your-dotnet-api.com/api';
 
 self.addEventListener('install', (event) => {
   console.log('Service Worker installing...');
@@ -18,7 +20,7 @@ self.addEventListener('fetch', (event) => {
   
   // Check if this is a request to our API endpoint
   if (url.pathname === '/api/plate') {
-    console.log('API endpoint request detected');
+    console.log('API endpoint request detected - forwarding to .NET backend');
     
     event.respondWith((async () => {
       try {
@@ -48,34 +50,22 @@ self.addEventListener('fetch', (event) => {
           }
           
           const plateNumber = requestData.plateNumber;
-          console.log('Processing plate number:', plateNumber);
+          console.log('Forwarding plate number to .NET backend:', plateNumber);
           
-          // Get the plates from localStorage
-          const storedPlates = localStorage.getItem('plates');
-          let plates = [];
+          // Forward the request to the .NET backend
+          const backendResponse = await fetch(`${API_BASE_URL}/plates/process`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ plateNumber }),
+          });
           
-          if (storedPlates) {
-            try {
-              plates = JSON.parse(storedPlates);
-              console.log('Retrieved plates from localStorage, count:', plates.length);
-            } catch (error) {
-              console.error('Error parsing plates from localStorage', error);
-            }
-          } else {
-            console.log('No plates found in localStorage');
-          }
+          // Parse the response from the backend
+          const responseData = await backendResponse.json();
           
-          // Check if the plate exists in our system
-          const foundPlate = plates.find((p) => p.plateNumber === plateNumber);
-          
-          if (foundPlate) {
-            console.log('Plate found:', foundPlate);
-            
-            // Update the timestamp
-            foundPlate.timestamp = new Date().toISOString();
-            
-            // Update localStorage
-            localStorage.setItem('plates', JSON.stringify(plates));
+          if (backendResponse.ok) {
+            console.log('Successful response from .NET backend:', responseData);
             
             // Notify client about the detected plate
             self.clients.matchAll().then(clients => {
@@ -93,11 +83,10 @@ self.addEventListener('fetch', (event) => {
             return new Response(
               JSON.stringify({
                 success: true,
-                message: `Plate ${plateNumber} recognized`,
-                data: {
-                  plateNumber: foundPlate.plateNumber,
-                  childName: foundPlate.childName,
-                  timestamp: foundPlate.timestamp
+                message: responseData.message || `Plate ${plateNumber} recognized`,
+                data: responseData.data || {
+                  plateNumber: plateNumber,
+                  timestamp: new Date().toISOString()
                 }
               }),
               {
@@ -109,14 +98,14 @@ self.addEventListener('fetch', (event) => {
               }
             );
           } else {
-            console.log('Plate not found:', plateNumber);
+            console.log('Error response from .NET backend:', responseData);
             return new Response(
               JSON.stringify({
                 success: false,
-                message: `Plate ${plateNumber} not found in system`
+                message: responseData.message || `Error processing plate ${plateNumber}`
               }),
               {
-                status: 404,
+                status: backendResponse.status,
                 headers: {
                   'Content-Type': 'application/json',
                   'Access-Control-Allow-Origin': '*'
