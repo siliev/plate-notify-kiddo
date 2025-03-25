@@ -5,7 +5,7 @@ import ServiceWorkerMessageHandler from './ServiceWorkerMessageHandler';
 import PlateDetectionListener from './PlateDetectionListener';
 
 /**
- * Component that handles API routes and connects to the .NET backend
+ * Component that handles API routes within the application
  * This is a wrapper component that includes all the API-related functionality
  */
 const PlateApiHandler: React.FC = () => {
@@ -17,7 +17,6 @@ const PlateApiHandler: React.FC = () => {
     }
 
     const setupServiceWorker = async () => {
-      console.log('Setting up service worker for .NET backend communication');
       await registerServiceWorker();
     };
     
